@@ -118,12 +118,12 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                         rqctx: ::nodal::RequestContext<T::Context>,
                         body: ::nodal::Bytes,
                     ) -> Result<::nodal::Bytes, ::nodal::BoxError> {
-                        let request: ::nodal::Request<_> = ::nodal::serde_json::from_slice(&body)?;
+                        let request: ::nodal::Request<_> = ::serde_json::from_slice(&body)?;
                         let result = T::#method_name(rqctx, request).await;
 
                         match result {
                             Ok(response) => {
-                                let json = ::nodal::serde_json::to_vec(&response)?;
+                                let json = ::serde_json::to_vec(&response)?;
                                 Ok(::nodal::Bytes::from(json))
                             }
                             Err(e) => Err(Box::new(e) as ::nodal::BoxError),
@@ -148,7 +148,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
 
                         match result {
                             Ok(response) => {
-                                let json = ::nodal::serde_json::to_vec(&response)?;
+                                let json = ::serde_json::to_vec(&response)?;
                                 Ok(::nodal::Bytes::from(json))
                             }
                             Err(e) => Err(Box::new(e) as ::nodal::BoxError),

@@ -1,13 +1,11 @@
 #![doc = include_str!("../../README.md")]
 
-pub mod handler;
+mod handler;
 
 pub use async_trait;
 pub use bytes::Bytes;
 pub use handler::{BoxError, EndpointHandler};
 pub use nodal_macros::{endpoint, service};
-pub use serde;
-pub use serde_json;
 
 use async_nats::ConnectOptions;
 use async_nats::HeaderMap;
@@ -189,7 +187,7 @@ impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
     }
 }
 
-pub async fn run_service<Context: ServiceContext>(
+async fn run_service<Context: ServiceContext>(
     nats: async_nats::Client,
     service: Service<Context>,
     nats_service: async_nats::service::Service,
