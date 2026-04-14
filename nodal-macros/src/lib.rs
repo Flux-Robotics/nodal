@@ -229,3 +229,53 @@ fn snake_to_pascal(s: &str) -> String {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_snake_to_pascal_simple() {
+        assert_eq!(snake_to_pascal("hello_world"), "HelloWorld");
+    }
+
+    #[test]
+    fn test_snake_to_pascal_single_word() {
+        assert_eq!(snake_to_pascal("hello"), "Hello");
+    }
+
+    #[test]
+    fn test_snake_to_pascal_empty_string() {
+        assert_eq!(snake_to_pascal(""), "");
+    }
+
+    #[test]
+    fn test_snake_to_pascal_multiple_underscores() {
+        assert_eq!(snake_to_pascal("hello__world"), "HelloWorld");
+    }
+
+    #[test]
+    fn test_snake_to_pascal_leading_underscore() {
+        assert_eq!(snake_to_pascal("_hello_world"), "HelloWorld");
+    }
+
+    #[test]
+    fn test_snake_to_pascal_trailing_underscore() {
+        assert_eq!(snake_to_pascal("hello_world_"), "HelloWorld");
+    }
+
+    #[test]
+    fn test_snake_to_pascal_many_words() {
+        assert_eq!(snake_to_pascal("this_is_a_long_name"), "ThisIsALongName");
+    }
+
+    #[test]
+    fn test_snake_to_pascal_single_char_words() {
+        assert_eq!(snake_to_pascal("a_b_c"), "ABC");
+    }
+
+    #[test]
+    fn test_snake_to_pascal_already_capitalized() {
+        assert_eq!(snake_to_pascal("Hello_World"), "HelloWorld");
+    }
+}
