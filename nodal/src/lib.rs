@@ -1,0 +1,275 @@
+#![doc = include_str!("../../README.md")]
+
+pub mod handler;
+
+pub use async_trait;
+pub use bytes::Bytes;
+pub use handler::{BoxError, EndpointHandler};
+pub use nodal_macros::{endpoint, service};
+pub use serde;
+pub use serde_json;
+
+use async_nats::ConnectOptions;
+use async_nats::HeaderMap;
+use async_nats::PublishError;
+use async_nats::ToServerAddrs;
+use async_nats::service::ServiceExt;
+use futures::StreamExt;
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::sync::Arc;
+use tokio::task::JoinSet;
+use tracing::Level;
+use tracing::debug;
+use tracing::error;
+use tracing::info;
+use tracing::span;
+
+/// Marker trait for service context types
+pub trait ServiceContext: Send + Sync + 'static {}
+
+impl<T: Send + Sync + 'static> ServiceContext for T {}
+
+/// Request wrapper type for endpoint request bodies
+#[derive(Debug, Deserialize)]
+pub struct Request<T> {
+    #[serde(flatten)]
+    inner: T,
+}
+
+impl<T> Request<T> {
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
+}
+
+impl<T> std::ops::Deref for Request<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+/// Successful response wrapper
+#[derive(Debug, Serialize)]
+pub struct Response<T>(pub T);
+
+/// Error type for service endpoints
+#[derive(Debug)]
+pub struct Error {
+    message: String,
+}
+
+impl Error {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for Error {}
+
+pub struct ServiceState<Context: ServiceContext> {
+    /// Service-specific state
+    private: Context,
+    /// Serivce unique id.
+    pub uid: String,
+}
+
+#[non_exhaustive]
+pub struct RequestContext<Context: ServiceContext> {
+    pub service: Arc<ServiceState<Context>>,
+    nats: async_nats::Client,
+    /// Unique id for this request. Relies on the client generating this.
+    pub request_id: String,
+}
+
+impl<Context: ServiceContext> RequestContext<Context> {
+    pub fn context(&self) -> &Context {
+        &self.service.private
+    }
+
+    pub fn nats(&self) -> &async_nats::Client {
+        &self.nats
+    }
+}
+
+/// Endpoint definition.
+pub struct Endpoint<Context: ServiceContext> {
+    pub subject: String,
+    pub handler: Arc<dyn EndpointHandler<Context>>,
+}
+
+/// Service definition.
+pub struct Service<Context: ServiceContext> {
+    pub name: String,
+    pub version: String,
+    pub endpoints: Vec<Endpoint<Context>>,
+    pub context: Context,
+}
+
+/// Cluster definition.
+pub struct Cluster<Context: ServiceContext, A: ToServerAddrs> {
+    nats_addrs: A,
+    nats_options: ConnectOptions,
+    services: Vec<Service<Context>>,
+}
+
+impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
+    pub fn new(addrs: A) -> std::io::Result<Self> {
+        Ok(Self {
+            nats_addrs: addrs,
+            nats_options: ConnectOptions::default(),
+            services: Vec::new(),
+        })
+    }
+
+    pub fn new_with_options(addrs: A, options: ConnectOptions) -> std::io::Result<Self> {
+        Ok(Self {
+            nats_addrs: addrs,
+            nats_options: options,
+            services: Vec::new(),
+        })
+    }
+
+    /// Register service instance.
+    pub fn register(&mut self, d: Service<Context>) {
+        self.services.push(d);
+    }
+
+    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+        let new_client = async || {
+            Ok::<_, Box<dyn std::error::Error>>(
+                async_nats::connect_with_options(&self.nats_addrs, self.nats_options.clone())
+                    .await
+                    .map_err(|e| format!("NATS connect failed: {e}"))?,
+            )
+        };
+
+        let mut join_set = tokio::task::JoinSet::new();
+
+        for service in self.services {
+            let nats = new_client().await?;
+            let nats_service = nats
+                .service_builder()
+                .start(&service.name, &service.version)
+                .await
+                .map_err(|e| e.to_string())?;
+            let span = span!(
+                Level::INFO,
+                "service",
+                name = service.name,
+                version = service.version,
+            );
+
+            join_set.spawn(async move {
+                let _guard = span.enter();
+                if let Err(e) = run_service(nats, service, nats_service).await {
+                    eprintln!("Service task: panicked: {e}");
+                }
+                drop(_guard);
+            });
+        }
+
+        while let Some(res) = join_set.join_next().await {
+            if let Err(e) = res {
+                eprintln!("Service task panicked: {e}");
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub async fn run_service<Context: ServiceContext>(
+    nats: async_nats::Client,
+    service: Service<Context>,
+    nats_service: async_nats::service::Service,
+) -> Result<(), async_nats::Error> {
+    let service_state = Arc::new(ServiceState {
+        private: service.context,
+        uid: nats_service.info().await.id.clone(),
+    });
+
+    let mut join_set: JoinSet<Result<_, PublishError>> = JoinSet::new();
+
+    for endpoint in service.endpoints.iter() {
+        let span = span!(Level::INFO, "endpoint", "subject" = endpoint.subject);
+        let nats = nats.clone();
+        let service_state = service_state.clone();
+        let handler = endpoint.handler.clone();
+        let subject = format!("{}.{}", service.name, endpoint.subject);
+        let mut ep = nats_service.endpoint(subject).await?;
+
+        join_set.spawn(async move {
+            let _guard = span.enter();
+            while let Some(msg) = ep.next().await {
+                let request_id = msg
+                    .message
+                    .headers
+                    .as_ref()
+                    .and_then(|h| h.get("nodal_request_id").map(|v| v.as_str()));
+
+                let span = span!(Level::INFO, "handler", request_id = request_id.to_owned());
+                let _guard = span.enter();
+                let result = handler
+                    .handle_request(
+                        RequestContext {
+                            service: service_state.clone(),
+                            nats: nats.clone(),
+                            request_id: request_id.unwrap_or("").to_owned(),
+                        },
+                        msg.message.payload.clone(),
+                    )
+                    .await;
+
+                // response headers
+                let mut headers = HeaderMap::new();
+                if let Some(id) = request_id {
+                    headers.insert("nodal_request_id", id);
+                }
+                headers.insert("nodal_service_uid", service_state.uid.as_str());
+
+                match result {
+                    Ok(result) => {
+                        debug!(response_size_bytes = result.len(), "request completed",);
+                        msg.respond_with_headers(Ok(result), headers).await?;
+                    }
+                    Err(err) => {
+                        error!(message = format!("{}", err), "request failed");
+                        msg.respond_with_headers(
+                            Err(async_nats::service::error::Error {
+                                status: format!("{}", err),
+                                code: 0, // todo: not sure what to do with this
+                            }),
+                            headers,
+                        )
+                        .await?;
+                    }
+                }
+            }
+            Ok(())
+        });
+    }
+
+    info!("service started");
+
+    while let Some(res) = join_set.join_next().await {
+        if let Err(e) = res {
+            eprintln!("Service task panicked: {e}");
+        }
+    }
+
+    info!("stopping service");
+    nats_service.stop().await?;
+
+    Ok(())
+}

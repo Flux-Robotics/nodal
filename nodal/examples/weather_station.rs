@@ -1,0 +1,86 @@
+use nodal::{Cluster, Error, Request, RequestContext, Response, service};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex;
+
+/// Interval configuration request body.
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+pub struct SetInterval {
+    interval_secs: f64,
+}
+
+#[service(name = "weather", version = "0.1.0")]
+trait WeatherService {
+    type Context;
+
+    /// Example of a response-only endpoint that requires no body to be provided
+    /// in the request.
+    #[endpoint(subject = "wind_speed")]
+    async fn wind_speed(ctx: RequestContext<Self::Context>) -> Result<Response<f64>, Error>;
+
+    /// Request-response endpoint that mutates the service context.
+    #[endpoint(subject = "set_interval")]
+    async fn set_interval(
+        ctx: RequestContext<Self::Context>,
+        body: Request<SetInterval>,
+    ) -> Result<Response<()>, Error>;
+
+    /// Request the interval value.
+    #[endpoint(subject = "interval")]
+    async fn interval(ctx: RequestContext<Self::Context>) -> Result<Response<f64>, Error>;
+}
+
+/// Shared weather service context. Automatically wrapped in a mutex by the
+/// framework.
+pub struct WeatherContext {
+    interval: Arc<Mutex<std::time::Duration>>,
+}
+
+pub enum WeatherImpl {}
+
+impl WeatherService for WeatherImpl {
+    type Context = WeatherContext;
+
+    async fn wind_speed(_ctx: RequestContext<WeatherContext>) -> Result<Response<f64>, Error> {
+        let speed: f64 = rand::random();
+        Ok(Response(speed))
+    }
+
+    async fn set_interval(
+        ctx: RequestContext<WeatherContext>,
+        body: Request<SetInterval>,
+    ) -> Result<Response<()>, Error> {
+        *ctx.context().interval.lock().await = Duration::from_secs_f64(body.interval_secs);
+        tracing::info!("Interval set to {} seconds", body.interval_secs);
+        Ok(Response(()))
+    }
+
+    async fn interval(ctx: RequestContext<WeatherContext>) -> Result<Response<f64>, Error> {
+        Ok(Response(ctx.context().interval.lock().await.as_secs_f64()))
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .init();
+
+    // service internal state
+    let weather_ctx = WeatherContext {
+        interval: Arc::new(Mutex::new(Duration::from_secs(60))),
+    };
+
+    // create a cluster with a NATS connection address
+    let mut cluster = Cluster::new("localhost:4222")?;
+
+    // register a service with the cluster
+    cluster.register(WeatherImpl::service(weather_ctx));
+    let weather_ctx = WeatherContext {
+        interval: Arc::new(Mutex::new(Duration::from_secs(60))),
+    };
+    cluster.register(WeatherImpl::service(weather_ctx));
+
+    // start the cluster
+    cluster.run().await
+}
