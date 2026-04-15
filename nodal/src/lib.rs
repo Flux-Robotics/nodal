@@ -163,6 +163,10 @@ impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
             let nats = new_client().await?;
             let nats_service = nats
                 .service_builder()
+                .metadata(HashMap::from([(
+                    "nodal_version".to_owned(),
+                    env!("CARGO_PKG_VERSION").to_owned(),
+                )]))
                 .start(&service.name, &service.version)
                 .await
                 .map_err(|e| e.to_string())?;
