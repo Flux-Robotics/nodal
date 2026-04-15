@@ -1,6 +1,7 @@
 #![doc = include_str!("../../README.md")]
 
 mod handler;
+pub mod header;
 
 pub use async_trait;
 pub use bytes::Bytes;
@@ -13,6 +14,7 @@ use async_nats::PublishError;
 use async_nats::ToServerAddrs;
 use async_nats::service::ServiceExt;
 use futures::StreamExt;
+use header::*;
 use schemars::JsonSchema;
 use schemars::Schema;
 use serde::{Deserialize, Serialize};
@@ -164,7 +166,7 @@ impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
             let nats_service = nats
                 .service_builder()
                 .metadata(HashMap::from([(
-                    "nodal_version".to_owned(),
+                    SERVICE_VERSION.to_owned(),
                     env!("CARGO_PKG_VERSION").to_owned(),
                 )]))
                 .start(&service.name, &service.version)
@@ -219,11 +221,11 @@ async fn run_service<Context: ServiceContext>(
             .endpoint_builder()
             .metadata(HashMap::from([
                 (
-                    "nodal_request_schema".to_owned(),
+                    ENDPOINT_REQUEST_SCHEMA.to_owned(),
                     serde_json::to_string(&endpoint.request_schema)?,
                 ),
                 (
-                    "nodal_response_schema".to_owned(),
+                    ENDPOINT_RESPONSE_SCHEMA.to_owned(),
                     serde_json::to_string(&endpoint.response_schema)?,
                 ),
             ]))
