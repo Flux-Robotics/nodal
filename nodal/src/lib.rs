@@ -234,8 +234,8 @@ async fn run_service<Context: ServiceContext>(
 
         join_set.spawn(async move {
             let _guard = span.enter();
-            while let Some(msg) = ep.next().await {
-                let request_id = msg
+            while let Some(req) = ep.next().await {
+                let request_id = req
                     .message
                     .headers
                     .as_ref()
@@ -250,7 +250,7 @@ async fn run_service<Context: ServiceContext>(
                             nats: nats.clone(),
                             request_id: request_id.unwrap_or("").to_owned(),
                         },
-                        msg.message.payload.clone(),
+                        req.message.payload.clone(),
                     )
                     .await;
 
@@ -261,23 +261,22 @@ async fn run_service<Context: ServiceContext>(
                     headers.insert(header::REQUEST_UID, id);
                 }
 
-                match result {
-                    Ok(result) => {
-                        debug!(response_size_bytes = result.len(), "request completed",);
-                        msg.respond_with_headers(Ok(result), headers).await?;
+                let response = match result {
+                    Ok(res) => {
+                        debug!(response_size_bytes = res.len(), "request completed");
+                        Ok(res)
                     }
                     Err(err) => {
-                        error!(message = format!("{}", err), "request failed");
-                        msg.respond_with_headers(
-                            Err(async_nats::service::error::Error {
-                                status: format!("{}", err),
-                                code: 0, // todo: not sure what to do with this
-                            }),
-                            headers,
-                        )
-                        .await?;
+                        let message = format!("{}", err);
+                        error!(message, "request failed");
+                        Err(async_nats::service::error::Error {
+                            status: message,
+                            code: 0, // todo: not sure what to do with this
+                        })
                     }
-                }
+                };
+
+                req.respond_with_headers(response, headers).await?;
             }
             Ok(())
         });
