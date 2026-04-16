@@ -76,10 +76,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // register a service with the cluster
     cluster.register(WeatherImpl::service(weather_ctx));
-    let weather_ctx = WeatherContext {
-        interval: Arc::new(Mutex::new(Duration::from_secs(60))),
-    };
-    cluster.register(WeatherImpl::service(weather_ctx));
 
     // start the cluster
     cluster.run().await
