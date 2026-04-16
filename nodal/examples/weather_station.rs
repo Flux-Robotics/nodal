@@ -9,7 +9,8 @@ pub struct SetInterval {
     interval_secs: f64,
 }
 
-#[service(name = "weather", version = "0.1.0")]
+/// Weather station service with two parameters, `location` and `id`.
+#[service(name = "weather.{location}.{id}", version = "0.1.0")]
 trait WeatherService {
     type Context;
 
@@ -75,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut cluster = Cluster::new("localhost:4222")?;
 
     // register a service with the cluster
-    cluster.register(WeatherImpl::service(weather_ctx));
+    cluster.register(WeatherImpl::service(weather_ctx, "virginia", "abc"));
 
     // start the cluster
     cluster.run().await

@@ -20,8 +20,24 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     });
     parse_macro_input!(args with parser);
-    let service_name = service_name.expect("service attribute requires 'name' parameter");
+    let service_name_template = service_name.expect("service attribute requires 'name' parameter");
     let service_version = service_version.expect("service attribute requires 'version' parameter");
+
+    // Extract template parameters from service name (e.g., "weather.{id}" -> ["id"])
+    let service_template_params = extract_template_params(&service_name_template);
+
+    // Generate parameter identifiers for the service function signature
+    let param_idents: Vec<syn::Ident> = service_template_params
+        .iter()
+        .map(|p| syn::Ident::new(p, proc_macro2::Span::call_site()))
+        .collect();
+
+    // Build the actual service name (without templates, just the plain name)
+    // e.g., "weather.{id}" -> "weather"
+    let service_name = service_name_template
+        .split('.')
+        .next()
+        .unwrap_or(&service_name_template);
 
     let trait_name = &trait_item.ident;
     let ext_trait_name = syn::Ident::new(&format!("{}Ext", trait_name), trait_name.span());
@@ -187,15 +203,29 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
 
         handler_impls.push(handler_impl);
 
+        // Build the subject expression by applying service template parameters
+        let subject_expr = build_subject_expr(subject, &service_template_params);
+
         endpoint_registrations.push(quote! {
             endpoints.push(::nodal::Endpoint {
-                subject: #subject.to_string(),
+                subject: #subject_expr,
                 handler: ::std::sync::Arc::new(#handler_name::<Self>(::std::marker::PhantomData)),
                 request_schema: ::schemars::schema_for!(#request_type),
                 response_schema: ::schemars::schema_for!(#response_type),
             });
         });
     }
+
+    // Build the service function signature with optional parameters
+    let service_fn_signature = if service_template_params.is_empty() {
+        quote! {
+            fn service(context: Self::Context) -> ::nodal::Service<Self::Context>
+        }
+    } else {
+        quote! {
+            fn service(context: Self::Context, #(#param_idents: impl ::std::fmt::Display),*) -> ::nodal::Service<Self::Context>
+        }
+    };
 
     let expanded = quote! {
         #trait_item
@@ -215,7 +245,16 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
             Self: Send + Sync + 'static,
             Self::Context: ::nodal::ServiceContext,
         {
-            fn service(context: Self::Context) -> ::nodal::Service<Self::Context> {
+            #service_fn_signature;
+        }
+
+        // blanket implementation of the extension trait
+        impl<T> #ext_trait_name for T
+        where
+            T: #trait_name + Send + Sync + 'static,
+            T::Context: ::nodal::ServiceContext,
+        {
+            #service_fn_signature {
                 let mut endpoints = Vec::new();
 
                 #(#endpoint_registrations)*
@@ -228,13 +267,6 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
             }
         }
-
-        // blanket implementation of the extension trait
-        impl<T> #ext_trait_name for T
-        where
-            T: #trait_name + Send + Sync + 'static,
-            T::Context: ::nodal::ServiceContext,
-        {}
     };
 
     TokenStream::from(expanded)
@@ -286,9 +318,64 @@ fn snake_to_pascal(s: &str) -> String {
         .collect()
 }
 
+// Extract template parameters from a template string
+// e.g., "weather.{id}.{zone}" -> ["id", "zone"]
+fn extract_template_params(template: &str) -> Vec<String> {
+    let mut params = Vec::new();
+    let mut chars = template.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '{' {
+            let mut param = String::new();
+            for ch in chars.by_ref() {
+                if ch == '}' {
+                    break;
+                }
+                param.push(ch);
+            }
+            if !param.is_empty() {
+                params.push(param);
+            }
+        }
+    }
+
+    params
+}
+
+// Build an expression that constructs the subject by replacing template parameters
+// with the corresponding parameters from the service name
+// e.g., subject "wind_speed.{id}" with service params ["id"] -> format!("wind_speed.{}", id)
+fn build_subject_expr(subject: &str, service_params: &[String]) -> proc_macro2::TokenStream {
+    if service_params.is_empty() {
+        // No parameters, just return the subject as a string
+        return quote! { #subject.to_string() };
+    }
+
+    // Replace {param} with {} for format! macro
+    let mut format_str = String::new();
+    for _ in service_params {
+        format_str.push_str("{}.");
+    }
+    format_str.push_str(subject);
+
+    // Generate parameter identifiers in the order they appear in this subject
+    let param_idents: Vec<proc_macro2::TokenStream> = service_params
+        .iter()
+        .map(|p| {
+            let ident = syn::Ident::new(p, proc_macro2::Span::call_site());
+            quote! { #ident }
+        })
+        .collect();
+
+    quote! {
+        format!(#format_str, #(#param_idents),*)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quote::quote;
 
     #[test]
     fn test_snake_to_pascal_simple() {
@@ -333,5 +420,116 @@ mod tests {
     #[test]
     fn test_snake_to_pascal_already_capitalized() {
         assert_eq!(snake_to_pascal("Hello_World"), "HelloWorld");
+    }
+
+    #[test]
+    fn test_extract_template_params_none() {
+        assert_eq!(extract_template_params("wind_speed"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_extract_template_params_single() {
+        assert_eq!(extract_template_params("weather.{id}"), vec!["id"]);
+    }
+
+    #[test]
+    fn test_extract_template_params_multiple() {
+        assert_eq!(
+            extract_template_params("weather.{id}.{zone}"),
+            vec!["id", "zone"]
+        );
+    }
+
+    #[test]
+    fn test_extract_template_params_empty_braces() {
+        assert_eq!(extract_template_params("weather.{}"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_extract_template_params_mixed() {
+        assert_eq!(
+            extract_template_params("prefix.{param1}.middle.{param2}.suffix"),
+            vec!["param1", "param2"]
+        );
+    }
+
+    #[test]
+    fn test_build_subject_expr_no_params() {
+        let subject = "wind_speed";
+        let service_params: Vec<String> = vec![];
+
+        let result = build_subject_expr(subject, &service_params);
+        let expected = quote! { "wind_speed".to_string() };
+
+        assert_eq!(result.to_string(), expected.to_string());
+    }
+
+    #[test]
+    fn test_build_subject_expr_single_param() {
+        let subject = "sensor_data";
+        let service_params = vec!["id".to_string()];
+
+        let result = build_subject_expr(subject, &service_params);
+        let expected = quote! {
+            format!("{}.sensor_data", id)
+        };
+
+        assert_eq!(result.to_string(), expected.to_string());
+    }
+
+    #[test]
+    fn test_build_subject_expr_multiple_params() {
+        let subject = "wind_speed";
+        let service_params = vec!["region".to_string(), "id".to_string()];
+
+        let result = build_subject_expr(subject, &service_params);
+        let expected = quote! {
+            format!("{}.{}.wind_speed", region, id)
+        };
+
+        assert_eq!(result.to_string(), expected.to_string());
+    }
+
+    #[test]
+    fn test_build_subject_expr_three_params() {
+        let subject = "data";
+        let service_params = vec![
+            "namespace".to_string(),
+            "service".to_string(),
+            "id".to_string(),
+        ];
+
+        let result = build_subject_expr(subject, &service_params);
+        let expected = quote! {
+            format!("{}.{}.{}.data", namespace, service, id)
+        };
+
+        assert_eq!(result.to_string(), expected.to_string());
+    }
+
+    #[test]
+    fn test_build_subject_expr_subject_with_special_chars() {
+        let subject = "sensor.temperature_reading";
+        let service_params = vec!["id".to_string()];
+
+        let result = build_subject_expr(subject, &service_params);
+        let expected = quote! {
+            format!("{}.sensor.temperature_reading", id)
+        };
+
+        assert_eq!(result.to_string(), expected.to_string());
+    }
+
+    #[test]
+    fn test_build_subject_expr_empty_subject() {
+        let subject = "";
+        let service_params = vec!["id".to_string()];
+
+        let result = build_subject_expr(subject, &service_params);
+        let expected = quote! {
+            format!("{}.", id)
+        };
+
+        assert_eq!(result.to_string(), expected.to_string());
     }
 }
