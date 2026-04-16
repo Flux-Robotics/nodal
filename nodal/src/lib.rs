@@ -166,7 +166,7 @@ impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
             let nats_service = nats
                 .service_builder()
                 .metadata(HashMap::from([(
-                    SERVICE_VERSION.to_owned(),
+                    VERSION.to_owned(),
                     env!("CARGO_PKG_VERSION").to_owned(),
                 )]))
                 .start(&service.name, &service.version)
@@ -221,11 +221,11 @@ async fn run_service<Context: ServiceContext>(
             .endpoint_builder()
             .metadata(HashMap::from([
                 (
-                    ENDPOINT_REQUEST_SCHEMA.to_owned(),
+                    REQUEST_SCHEMA.to_owned(),
                     serde_json::to_string(&endpoint.request_schema)?,
                 ),
                 (
-                    ENDPOINT_RESPONSE_SCHEMA.to_owned(),
+                    RESPONSE_SCHEMA.to_owned(),
                     serde_json::to_string(&endpoint.response_schema)?,
                 ),
             ]))
@@ -256,10 +256,10 @@ async fn run_service<Context: ServiceContext>(
 
                 // response headers
                 let mut headers = HeaderMap::new();
+                headers.insert(header::SERVICE_UID, service_state.uid.as_str());
                 if let Some(id) = request_id {
-                    headers.insert("nodal_request_id", id);
+                    headers.insert(header::REQUEST_UID, id);
                 }
-                headers.insert("nodal_service_uid", service_state.uid.as_str());
 
                 match result {
                     Ok(result) => {
