@@ -239,7 +239,7 @@ async fn run_service<Context: ServiceContext>(
                     .message
                     .headers
                     .as_ref()
-                    .and_then(|h| h.get("nodal_request_id").map(|v| v.as_str()));
+                    .and_then(|h| h.get(header::REQUEST_ID).map(|v| v.as_str()));
 
                 let span = span!(Level::INFO, "handler", request_id = request_id.to_owned());
                 let _guard = span.enter();
