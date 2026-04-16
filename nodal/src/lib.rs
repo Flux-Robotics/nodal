@@ -258,7 +258,7 @@ async fn run_service<Context: ServiceContext>(
                 let mut headers = HeaderMap::new();
                 headers.insert(header::SERVICE_UID, service_state.uid.as_str());
                 if let Some(id) = request_id {
-                    headers.insert(header::REQUEST_UID, id);
+                    headers.insert(header::REQUEST_ID, id);
                 }
 
                 let response = match result {
