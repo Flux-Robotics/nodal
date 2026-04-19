@@ -2,34 +2,6 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{ItemTrait, ReturnType, TraitItem, parse_macro_input};
 
-/// Generates a service API description from a trait.
-///
-/// The `Context` type is shared between endpoints and stream handlers to act as
-/// the internal state of the service. The type is assigned only in the
-/// implementation, but traits can be applied here like: `type Context: Debug;`
-///
-/// Within the trait are the [`endpoint`] and [`stream`] definitions.
-///
-/// # Example
-///
-/// ```rust
-/// use nodal::service;
-/// use nodal::Error;
-/// use nodal::Request;
-/// use nodal::RequestContext;
-/// use nodal::Response;
-///
-/// #[service(name = "actuator", version = "0.1.2")]
-/// trait ActuatorService {
-///     type Context;
-///
-///     #[endpoint(subject = "set_torque")]
-///     async fn set_torque(
-///         ctx: RequestContext<Self::Context>,
-///         body: Request<f64>,
-///     ) -> Result<Response<()>, Error>;
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut trait_item = parse_macro_input!(input as ItemTrait);
@@ -447,14 +419,12 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-/// Transforms a handler function into a NATS service endpoint.
 #[proc_macro_attribute]
 pub fn endpoint(_args: TokenStream, input: TokenStream) -> TokenStream {
     // this is handled by the service macro
     input
 }
 
-/// Transforms a stream handler function into a NATS JetStream publisher.
 #[proc_macro_attribute]
 pub fn stream(_args: TokenStream, input: TokenStream) -> TokenStream {
     // this is handled by the service macro

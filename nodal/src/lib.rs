@@ -11,8 +11,10 @@ mod stream;
 
 pub use async_trait;
 pub use bytes::Bytes;
-pub use endpoint::{EndpointHandler, Request, RequestContext, Response};
-pub use nodal_macros::{endpoint, service, stream};
+pub use endpoint::EndpointHandler;
+pub use endpoint::Request;
+pub use endpoint::RequestContext;
+pub use endpoint::Response;
 pub use stream::{StreamContext, StreamHandler};
 
 use async_nats::ConnectOptions;
@@ -32,6 +34,61 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::span;
+
+extern crate nodal_macros;
+
+/// Generates a service API description from a trait.
+///
+/// The `Context` type is shared between endpoints and stream handlers to act as
+/// the internal state of the service. The type is assigned only in the
+/// implementation, but traits can be applied here like: `type Context: Debug;`
+///
+/// Within the trait are the [`endpoint`] and [`stream`] definitions.
+///
+/// # Example
+///
+/// ```rust
+/// use nodal::service;
+/// use nodal::Error;
+/// use nodal::Request;
+/// use nodal::RequestContext;
+/// use nodal::Response;
+///
+/// #[service(name = "actuator", version = "0.1.2")]
+/// trait ActuatorService {
+///     type Context;
+///
+///     #[endpoint(subject = "set_torque")]
+///     async fn set_torque(
+///         ctx: RequestContext<Self::Context>,
+///         body: Request<f64>,
+///     ) -> Result<Response<()>, Error>;
+/// }
+/// ```
+pub use nodal_macros::service;
+
+/// Transforms a handler function into a NATS service endpoint.
+///
+/// ```ignore
+/// #[endpoint(subject = "example")]
+/// async fn example_endpoint(
+///     ctx: RequestContext<Self::Context>,
+///     /* ... */,
+/// ) -> Result<Response</* ... */, Error>;
+/// ```
+pub use nodal_macros::endpoint;
+
+/// Transforms a stream handler function into a NATS JetStream publisher.
+///
+/// ```ignore
+/// #[stream(
+///     name = "EXAMPLE",
+///     subject = "example",
+///     message = ExampleType,
+/// )]
+/// async fn example(ctx: StreamContext<Self::Context>) -> Result<(), Error>;
+/// ```
+pub use nodal_macros::stream;
 
 /// Marker trait for service context types.
 pub trait ServiceContext: Send + Sync + 'static {}
