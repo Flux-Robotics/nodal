@@ -158,7 +158,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                 {
                     async fn handle_request(
                         &self,
-                        rqctx: ::nodal::RequestContext<T::Context>,
+                        rqctx: ::nodal::endpoint::RequestContext<T::Context>,
                         body: ::nodal::Bytes,
                     ) -> Result<::nodal::Bytes, ::nodal::BoxError> {
                         let request: ::nodal::endpoint::Request<_> = ::serde_json::from_slice(&body)?;
@@ -184,7 +184,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                 {
                     async fn handle_request(
                         &self,
-                        rqctx: ::nodal::RequestContext<T::Context>,
+                        rqctx: ::nodal::endpoint::RequestContext<T::Context>,
                         _body: ::nodal::Bytes,
                     ) -> Result<::nodal::Bytes, ::nodal::BoxError> {
                         let result = T::#method_name(rqctx).await;
