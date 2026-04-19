@@ -1,4 +1,4 @@
-use nodal::{Cluster, Error, Request, RequestContext, Response, service};
+use nodal::{Cluster, Error, RequestContext, endpoint::Request, endpoint::Response, service};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
