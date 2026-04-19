@@ -1,7 +1,9 @@
 [package]
 name = "nodal"
+description = "Framework for building robotics APIs that use NATS messaging"
 version = "0.1.0"
 edition = "2024"
+license = "MPL-2.0"
 
 [dependencies]
 nodal-macros = { version = "^0.1.0", path = "../nodal-macros" }

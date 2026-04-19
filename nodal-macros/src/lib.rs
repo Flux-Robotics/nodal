@@ -2,6 +2,34 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{ItemTrait, ReturnType, TraitItem, parse_macro_input};
 
+/// Generates a service API description from a trait.
+///
+/// The `Context` type is shared between endpoints and stream handlers to act as
+/// the internal state of the service. The type is assigned only in the
+/// implementation, but traits can be applied here like: `type Context: Debug;`
+///
+/// Within the trait are the [`endpoint`] and [`stream`] definitions.
+///
+/// # Example
+///
+/// ```rust
+/// use nodal::service;
+/// use nodal::Error;
+/// use nodal::Request;
+/// use nodal::RequestContext;
+/// use nodal::Response;
+///
+/// #[service(name = "actuator", version = "0.1.2")]
+/// trait ActuatorService {
+///     type Context;
+///
+///     #[endpoint(subject = "set_torque")]
+///     async fn set_torque(
+///         ctx: RequestContext<Self::Context>,
+///         body: Request<f64>,
+///     ) -> Result<Response<()>, Error>;
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut trait_item = parse_macro_input!(input as ItemTrait);
@@ -23,16 +51,15 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
     let service_name_template = service_name.expect("service attribute requires 'name' parameter");
     let service_version = service_version.expect("service attribute requires 'version' parameter");
 
-    // Extract template parameters from service name (e.g., "weather.{id}" -> ["id"])
     let service_template_params = extract_template_params(&service_name_template);
 
-    // Generate parameter identifiers for the service function signature
+    // generate parameter identifiers for the service function signature
     let param_idents: Vec<syn::Ident> = service_template_params
         .iter()
         .map(|p| syn::Ident::new(p, proc_macro2::Span::call_site()))
         .collect();
 
-    // Build the actual service name (without templates, just the plain name)
+    // build the actual service name (without templates, just the plain name)
     // e.g., "weather.{id}" -> "weather"
     let service_name = service_name_template
         .split('.')
@@ -217,10 +244,10 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                 {
                     async fn handle_request(
                         &self,
-                        rqctx: ::nodal::endpoint::RequestContext<T::Context>,
+                        rqctx: ::nodal::RequestContext<T::Context>,
                         body: ::nodal::Bytes,
-                    ) -> Result<::nodal::Bytes, ::nodal::BoxError> {
-                        let request: ::nodal::endpoint::Request<_> = ::serde_json::from_slice(&body)?;
+                    ) -> Result<::nodal::Bytes, Box<dyn std::error::Error + Send + Sync>> {
+                        let request: ::nodal::Request<_> = ::serde_json::from_slice(&body)?;
                         let result = T::#method_name(rqctx, request).await;
 
                         match result {
@@ -228,7 +255,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                                 let json = ::serde_json::to_vec(&response)?;
                                 Ok(::nodal::Bytes::from(json))
                             }
-                            Err(e) => Err(Box::new(e) as ::nodal::BoxError),
+                            Err(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
                         }
                     }
                 }
@@ -243,9 +270,9 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                 {
                     async fn handle_request(
                         &self,
-                        rqctx: ::nodal::endpoint::RequestContext<T::Context>,
+                        rqctx: ::nodal::RequestContext<T::Context>,
                         _body: ::nodal::Bytes,
-                    ) -> Result<::nodal::Bytes, ::nodal::BoxError> {
+                    ) -> Result<::nodal::Bytes, Box<dyn std::error::Error + Send + Sync>> {
                         let result = T::#method_name(rqctx).await;
 
                         match result {
@@ -253,7 +280,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                                 let json = ::serde_json::to_vec(&response)?;
                                 Ok(::nodal::Bytes::from(json))
                             }
-                            Err(e) => Err(Box::new(e) as ::nodal::BoxError),
+                            Err(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
                         }
                     }
                 }
@@ -262,7 +289,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
 
         handler_impls.push(handler_impl);
 
-        // Build the subject expression by applying service template parameters
+        // build the subject expression by applying service template parameters
         let subject_expr = build_subject_expr(subject, &service_template_params);
 
         endpoint_registrations.push(quote! {
@@ -275,7 +302,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
         });
     }
 
-    // Build the service function signature with optional parameters
+    // build the service function signature with optional parameters
     let service_fn_signature = if service_template_params.is_empty() {
         quote! {
             fn service(context: Self::Context) -> ::nodal::Service<Self::Context>
@@ -309,14 +336,14 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
 
         stream_handler_impls.push(quote! {
             #[::nodal::async_trait::async_trait]
-            impl<T> ::nodal::stream::StreamHandler<T::Context> for #handler_name<T>
+            impl<T> ::nodal::StreamHandler<T::Context> for #handler_name<T>
             where
                 T: #trait_name + Send + Sync + 'static,
                 T::Context: ::nodal::ServiceContext,
             {
                 async fn handle_stream(
                     &self,
-                    ctx: ::nodal::stream::StreamContext<T::Context>,
+                    ctx: ::nodal::StreamContext<T::Context>,
                 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     T::#method_name(ctx).await?;
                     Ok(())
@@ -420,19 +447,21 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+/// Transforms a handler function into a NATS service endpoint.
 #[proc_macro_attribute]
 pub fn endpoint(_args: TokenStream, input: TokenStream) -> TokenStream {
     // this is handled by the service macro
     input
 }
 
+/// Transforms a stream handler function into a NATS JetStream publisher.
 #[proc_macro_attribute]
 pub fn stream(_args: TokenStream, input: TokenStream) -> TokenStream {
     // this is handled by the service macro
     input
 }
 
-// helper function to extract the response type T from Result<Response<T>, Error>
+/// Helper function to extract the response type T from Result<Response<T>, Error>
 fn extract_response_type(ty: &syn::Type) -> Option<syn::Type> {
     if let syn::Type::Path(type_path) = ty {
         // look for Result<Response<T>, Error>
@@ -472,8 +501,8 @@ fn snake_to_pascal(s: &str) -> String {
         .collect()
 }
 
-// Extract template parameters from a template string
-// e.g., "weather.{id}.{zone}" -> ["id", "zone"]
+/// Extract template parameters from a template string
+/// e.g., "weather.{id}.{zone}" -> ["id", "zone"]
 fn extract_template_params(template: &str) -> Vec<String> {
     let mut params = Vec::new();
     let mut chars = template.chars().peekable();
@@ -496,23 +525,23 @@ fn extract_template_params(template: &str) -> Vec<String> {
     params
 }
 
-// Build an expression that constructs the subject by replacing template parameters
-// with the corresponding parameters from the service name
-// e.g., subject "wind_speed.{id}" with service params ["id"] -> format!("wind_speed.{}", id)
+/// Build an expression that constructs the subject by replacing template parameters
+/// with the corresponding parameters from the service name
+/// e.g., subject "weather.{id}.wind_speed" with service params ["id"] -> format!("{}.wind_speed", id)
 fn build_subject_expr(subject: &str, service_params: &[String]) -> proc_macro2::TokenStream {
     if service_params.is_empty() {
-        // No parameters, just return the subject as a string
+        // no parameters, just return the subject as a string
         return quote! { #subject.to_string() };
     }
 
-    // Replace {param} with {} for format! macro
+    // replace {param} with {} for format! macro
     let mut format_str = String::new();
     for _ in service_params {
         format_str.push_str("{}.");
     }
     format_str.push_str(subject);
 
-    // Generate parameter identifiers in the order they appear in this subject
+    // generate parameter identifiers in the order they appear in this subject
     let param_idents: Vec<proc_macro2::TokenStream> = service_params
         .iter()
         .map(|p| {
@@ -526,6 +555,8 @@ fn build_subject_expr(subject: &str, service_params: &[String]) -> proc_macro2::
     }
 }
 
+/// Build an expression that construct the subject prefix by replacing the
+/// template parameters with the corresponding parameters from the service name
 fn build_subject_prefix_expr(service_params: &[String]) -> proc_macro2::TokenStream {
     let format_str = service_params
         .iter()
@@ -533,7 +564,7 @@ fn build_subject_prefix_expr(service_params: &[String]) -> proc_macro2::TokenStr
         .collect::<Vec<_>>()
         .join(".");
 
-    // Generate parameter identifiers in the order they appear in this subject
+    // generate parameter identifiers in the order they appear in this subject
     let param_idents: Vec<proc_macro2::TokenStream> = service_params
         .iter()
         .map(|p| {

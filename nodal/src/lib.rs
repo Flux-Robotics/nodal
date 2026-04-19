@@ -1,13 +1,19 @@
-#![doc = include_str!("../../README.md")]
+//! Nodal is a general-purpose framework for creating RPC-like APIs in Rust
+//! using NATS messaging. It also happens to be good for building robot
+//! software.
+//!
+//! # API stability
+//! While this crate is pre v1, the API can and will change without warning.
 
-pub mod endpoint;
+mod endpoint;
 pub mod header;
-pub mod stream;
+mod stream;
 
 pub use async_trait;
 pub use bytes::Bytes;
-pub use endpoint::{BoxError, EndpointHandler};
+pub use endpoint::{EndpointHandler, Request, RequestContext, Response};
 pub use nodal_macros::{endpoint, service, stream};
+pub use stream::{StreamContext, StreamHandler};
 
 use async_nats::ConnectOptions;
 use async_nats::HeaderMap;
@@ -20,7 +26,6 @@ use schemars::Schema;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
-use stream::*;
 use tokio::task::JoinSet;
 use tracing::Level;
 use tracing::debug;
@@ -28,12 +33,12 @@ use tracing::error;
 use tracing::info;
 use tracing::span;
 
-/// Marker trait for service context types
+/// Marker trait for service context types.
 pub trait ServiceContext: Send + Sync + 'static {}
 
 impl<T: Send + Sync + 'static> ServiceContext for T {}
 
-/// Error type for service endpoints
+/// Error type for service endpoints.
 #[derive(Debug)]
 pub struct Error {
     message: String,
@@ -63,6 +68,7 @@ impl From<async_nats::jetstream::context::PublishError> for Error {
     }
 }
 
+/// Shared service state.
 pub struct ServiceState<Context: ServiceContext> {
     /// Service-specific state
     private: Context,
@@ -78,6 +84,7 @@ pub struct Endpoint<Context: ServiceContext> {
     pub response_schema: Schema,
 }
 
+/// Stream definition.
 pub struct Stream<Context: ServiceContext> {
     pub subject_prefix: String,
     pub config: async_nats::jetstream::stream::Config,

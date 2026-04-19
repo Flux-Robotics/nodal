@@ -31,25 +31,27 @@ impl<T: JsonSchema> std::ops::Deref for Request<T> {
 #[derive(Debug, Serialize)]
 pub struct Response<T>(pub T);
 
+/// Request context.
 #[non_exhaustive]
 pub struct RequestContext<Context: ServiceContext> {
-    pub service: Arc<ServiceState<Context>>,
     pub(crate) nats: async_nats::Client,
+    /// Service shared state.
+    pub service: Arc<ServiceState<Context>>,
     /// Unique id for this request. Relies on the client generating this.
     pub request_id: String,
 }
 
 impl<Context: ServiceContext> RequestContext<Context> {
+    /// Shared context.
     pub fn context(&self) -> &Context {
         &self.service.private
     }
 
+    /// NATS connection.
     pub fn nats(&self) -> &async_nats::Client {
         &self.nats
     }
 }
-
-pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 #[async_trait]
 pub trait EndpointHandler<Context>: Debug + Send + Sync
@@ -60,5 +62,5 @@ where
         &self,
         rqctx: RequestContext<Context>,
         body: Bytes,
-    ) -> Result<Bytes, BoxError>;
+    ) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 }

@@ -1,3 +1,4 @@
+use crate::{ServiceContext, ServiceState, header};
 use async_nats::{
     HeaderMap, ToSubject,
     jetstream::context::{PublishAckFuture, PublishError},
@@ -6,25 +7,29 @@ use async_nats::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use serde::Serialize;
-
-use crate::{ServiceContext, ServiceState, header};
 use std::{fmt::Debug, sync::Arc};
 
+/// Stream context.
+#[non_exhaustive]
 pub struct StreamContext<Context: ServiceContext> {
-    pub service: Arc<ServiceState<Context>>,
     pub(crate) subject_prefix: String,
     pub(crate) jetstream: async_nats::jetstream::Context,
+    /// Service shared state.
+    pub service: Arc<ServiceState<Context>>,
 }
 
 impl<Context: ServiceContext> StreamContext<Context> {
+    /// Shared context.
     pub fn context(&self) -> &Context {
         &self.service.private
     }
 
+    /// NATS connection.
     pub fn nats(&self) -> async_nats::Client {
         self.jetstream.client()
     }
 
+    /// NATS JetStream connection.
     pub fn jetstream(&self) -> &async_nats::jetstream::Context {
         &self.jetstream
     }

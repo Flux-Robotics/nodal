@@ -1,7 +1,5 @@
 use async_nats::jetstream::stream::StorageType;
-use nodal::endpoint::RequestContext;
-use nodal::stream::StreamContext;
-use nodal::{Cluster, Error, endpoint::Request, endpoint::Response, service};
+use nodal::{Cluster, Error, Request, RequestContext, Response, StreamContext, service};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
