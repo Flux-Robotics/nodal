@@ -19,7 +19,6 @@ pub use stream::{StreamContext, StreamHandler};
 
 use async_nats::ConnectOptions;
 use async_nats::HeaderMap;
-use async_nats::PublishError;
 use async_nats::ToServerAddrs;
 use async_nats::service::ServiceExt;
 use futures::StreamExt;
