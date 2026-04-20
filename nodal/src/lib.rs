@@ -223,7 +223,8 @@ impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
         }
 
         while let Some(res) = join_set.join_next().await {
-            res.map_err(|e| format!("service task stopped: {e}"))?;
+            res.map_err(|e| format!("join error: {e}"))?
+                .map_err(|e| format!("service task stopped: {e}"))?;
         }
 
         Ok(())
