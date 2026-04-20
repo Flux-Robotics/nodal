@@ -218,10 +218,7 @@ impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
 
             join_set.spawn(async move {
                 let _guard = span.enter();
-                if let Err(e) = run_service(nats, service, nats_service).await {
-                    eprintln!("Service task: panicked: {e}");
-                }
-                drop(_guard);
+                run_service(nats, service, nats_service).await
             });
         }
 
