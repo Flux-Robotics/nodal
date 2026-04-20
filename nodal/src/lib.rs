@@ -241,7 +241,7 @@ async fn run_service<Context: ServiceContext>(
         uid: nats_service.info().await.id.clone(),
     });
 
-    let mut join_set: JoinSet<Result<_, PublishError>> = JoinSet::new();
+    let mut join_set: JoinSet<Result<_, async_nats::Error>> = JoinSet::new();
 
     for endpoint in service.endpoints.iter() {
         let span = span!(Level::INFO, "endpoint", "subject" = endpoint.subject);
@@ -337,8 +337,7 @@ async fn run_service<Context: ServiceContext>(
                     subject_prefix: stream.subject_prefix,
                     jetstream,
                 })
-                .await
-                .unwrap();
+                .await?;
             info!("handler ended");
             Ok(())
         });
