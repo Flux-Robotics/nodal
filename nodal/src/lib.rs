@@ -294,6 +294,7 @@ async fn run_service<Context: ServiceContext>(
                         .and_then(|h| h.get(header::REQUEST_ID).map(|v| v.as_str()));
 
                     let span = span!(Level::INFO, "handler", request_id = request_id.to_owned());
+                    #[cfg(feature = "metrics")]
                     let start_handler = std::time::Instant::now();
                     let result = handler
                         .handle_request(
