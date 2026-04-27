@@ -11,6 +11,7 @@ pub struct SetInterval {
     interval_secs: f64,
 }
 
+/// Temperature reading.
 #[derive(serde::Serialize, schemars::JsonSchema)]
 pub struct Temperature {
     degrees_celsius: f64,
