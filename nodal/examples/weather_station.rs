@@ -107,8 +107,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // create a cluster with a NATS connection address
     let mut cluster = Cluster::new("localhost:4222")?;
 
+    // service parameters
+    let params = ("virginia", "abc");
+
     // register a service with the cluster
-    cluster.register(WeatherImpl::service(weather_ctx, "virginia", "abc"));
+    cluster.register(WeatherImpl::service(weather_ctx, params));
 
     // spawn cluster in background
     tokio::spawn(async move {
@@ -116,7 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let nats = async_nats::connect("localhost:4222").await?;
-    let client = WeatherServiceClient::new(nats, "virginia", "abc");
+    let client = WeatherServiceClient::new(nats, params);
 
     loop {
         sleep(Duration::from_secs(1)).await;

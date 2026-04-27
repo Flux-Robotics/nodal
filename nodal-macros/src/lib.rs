@@ -275,14 +275,27 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     // build the service function signature with optional parameters
+    // build a Vec of `impl Display` type tokens, one per parameter
+    let param_types: Vec<proc_macro2::TokenStream> = param_idents
+        .iter()
+        .map(|_| quote! { impl ::std::fmt::Display })
+        .collect();
+
     let service_fn_signature = if service_template_params.is_empty() {
         quote! {
             fn service(context: Self::Context) -> ::nodal::Service<Self::Context>
         }
     } else {
         quote! {
-            fn service(context: Self::Context, #(#param_idents: impl ::std::fmt::Display),*) -> ::nodal::Service<Self::Context>
+            fn service(context: Self::Context, params: (#(#param_types,)*)) -> ::nodal::Service<Self::Context>
         }
+    };
+
+    // build the tuple destructuring statement for the service function body
+    let service_fn_body_prelude = if param_idents.is_empty() {
+        quote! {}
+    } else {
+        quote! { let (#(#param_idents,)*) = params; }
     };
 
     // generate stream handlers and registrations
@@ -369,7 +382,14 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
     let client_new_params = if param_idents.is_empty() {
         quote! { nats: ::async_nats::Client }
     } else {
-        quote! { nats: ::async_nats::Client, #(#param_idents: impl ::std::fmt::Display),* }
+        quote! { nats: ::async_nats::Client, params: (#(#param_types,)*) }
+    };
+
+    // build the tuple destructuring statement for the client new() body
+    let client_params_destructure = if param_idents.is_empty() {
+        quote! {}
+    } else {
+        quote! { let (#(#param_idents,)*) = params; }
     };
 
     let client_field_inits: Vec<proc_macro2::TokenStream> = param_idents
@@ -465,6 +485,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
             T::Context: ::nodal::ServiceContext,
         {
             #service_fn_signature {
+                #service_fn_body_prelude
                 let mut endpoints = Vec::new();
                 let mut streams = Vec::new();
 
@@ -490,6 +511,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
 
         impl #client_name {
             pub fn new(#client_new_params) -> Self {
+                #client_params_destructure
                 Self {
                     nats,
                     #(#client_field_inits,)*
