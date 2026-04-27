@@ -270,10 +270,23 @@ async fn run_service<Context: ServiceContext>(
             .add(subject)
             .await?;
 
+        #[cfg(feature = "metrics")]
+        let metric_labels = [
+            ("service_name", service.name.to_owned()),
+            ("service_version", service.version.to_owned()),
+            (
+                "endpoint_subject",
+                format!("{}.{}", service.name, endpoint.subject),
+            ),
+        ];
+
         join_set.spawn(
             async move {
                 debug!("handler started");
                 while let Some(req) = ep.next().await {
+                    #[cfg(feature = "metrics")]
+                    let start = std::time::Instant::now();
+
                     let request_id = req
                         .message
                         .headers
@@ -281,6 +294,7 @@ async fn run_service<Context: ServiceContext>(
                         .and_then(|h| h.get(header::REQUEST_ID).map(|v| v.as_str()));
 
                     let span = span!(Level::INFO, "handler", request_id = request_id.to_owned());
+                    let start_handler = std::time::Instant::now();
                     let result = handler
                         .handle_request(
                             endpoint::RequestContext {
@@ -292,6 +306,9 @@ async fn run_service<Context: ServiceContext>(
                         )
                         .instrument(span)
                         .await;
+                    #[cfg(feature = "metrics")]
+                    metrics::histogram!("nodal_request_handler_duration_seconds", &metric_labels)
+                        .record(start_handler.elapsed().as_secs_f64());
 
                     // response headers
                     let mut headers = HeaderMap::new();
@@ -308,6 +325,9 @@ async fn run_service<Context: ServiceContext>(
                         Err(err) => {
                             let message = format!("{}", err);
                             error!(message, "request failed");
+                            #[cfg(feature = "metrics")]
+                            metrics::counter!("nodal_request_handler_errors", &metric_labels)
+                                .increment(1);
                             Err(async_nats::service::error::Error {
                                 status: message,
                                 code: 0, // todo: not sure what to do with this
@@ -316,6 +336,10 @@ async fn run_service<Context: ServiceContext>(
                     };
 
                     req.respond_with_headers(response, headers).await?;
+
+                    #[cfg(feature = "metrics")]
+                    metrics::histogram!("nodal_request_duration_seconds", &metric_labels)
+                        .record(start.elapsed().as_secs_f64());
                 }
                 info!("handler ended");
                 Ok(())

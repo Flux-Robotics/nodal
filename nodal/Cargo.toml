@@ -17,9 +17,16 @@ serde_json = "1.0"
 tracing = "0.1.44"
 schemars = "1.2"
 ulid = "1.2"
+metrics = { version = "0.24", optional = true }
 
 [dev-dependencies]
 nats-server = { git = "https://github.com/nats-io/nats.rs", version = "0.1.0" }
 tokio = { version = "1.51", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rand = "0.10"
+metrics-exporter-prometheus = "0.18.1"
+
+[features]
+default = ["metrics"]
+
+metrics = ["dep:metrics"]

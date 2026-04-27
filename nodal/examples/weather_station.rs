@@ -1,4 +1,5 @@
 use async_nats::jetstream::stream::StorageType;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use nodal::Cluster;
 use nodal::Error;
 use nodal::Request;
@@ -104,6 +105,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();
+
+    let builder = PrometheusBuilder::new();
+    builder.install().expect("install recorder");
 
     // service internal state
     let weather_ctx = WeatherContext {
