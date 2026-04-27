@@ -48,6 +48,10 @@ extern crate nodal_macros;
 ///
 /// Within the trait are the [`endpoint`] and [`stream`] definitions.
 ///
+/// # Headers
+///
+/// - `Nodal-Version` Nodal library version.
+///
 /// # Example
 ///
 /// ```rust
