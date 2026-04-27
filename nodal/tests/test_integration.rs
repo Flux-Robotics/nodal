@@ -1,7 +1,6 @@
-use std::time::Duration;
-
 use async_nats::service;
-use nodal::{Cluster, Error, RequestContext, Response, endpoint, service};
+use nodal::{Cluster, Error, RequestContext, Response, service};
+use std::time::Duration;
 use tokio::time::sleep;
 
 #[service(name = "test_service", version = "0.1.2")]
