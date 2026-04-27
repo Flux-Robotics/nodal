@@ -3,9 +3,10 @@ use nodal::{Cluster, Error, Request, RequestContext, Response, StreamContext, se
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 
 /// Interval configuration request body.
-#[derive(serde::Deserialize, schemars::JsonSchema)]
+#[derive(serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct SetInterval {
     interval_secs: f64,
 }
@@ -107,6 +108,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // register a service with the cluster
     cluster.register(WeatherImpl::service(weather_ctx, "virginia", "abc"));
 
-    // start the cluster
-    cluster.run().await
+    // spawn cluster in background
+    tokio::spawn(async move {
+        cluster.run().await.unwrap();
+    });
+
+    let nats = async_nats::connect("localhost:4222").await?;
+    let client = WeatherServiceClient::new(nats, "virginia", "abc");
+
+    loop {
+        sleep(Duration::from_secs(1)).await;
+        let speed = client.wind_speed().await?;
+        println!("Wind speed: {:.02} m/s", speed);
+    }
 }
