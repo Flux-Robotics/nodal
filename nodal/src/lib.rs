@@ -72,6 +72,10 @@ pub use nodal_macros::service;
 
 /// Transforms a handler function into a NATS service endpoint.
 ///
+/// # Request Headers
+///
+/// - `Nodal-Request-Id` (optional) a unique identifier that the client generates to help trace requests.
+///
 /// ```ignore
 /// #[endpoint(subject = "example")]
 /// async fn example_endpoint(
