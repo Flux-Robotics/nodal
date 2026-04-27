@@ -1,13 +1,16 @@
-use crate::{ServiceContext, ServiceState, header};
-use async_nats::{
-    HeaderMap, ToSubject,
-    jetstream::context::{PublishAckFuture, PublishError},
-    jetstream::message::PublishMessage,
-};
+use crate::ServiceContext;
+use crate::ServiceState;
+use crate::header;
+use async_nats::HeaderMap;
+use async_nats::ToSubject;
+use async_nats::jetstream::context::PublishAckFuture;
+use async_nats::jetstream::context::PublishError;
+use async_nats::jetstream::message::PublishMessage;
 use async_trait::async_trait;
 use bytes::Bytes;
 use serde::Serialize;
-use std::{fmt::Debug, sync::Arc};
+use std::fmt::Debug;
+use std::sync::Arc;
 
 /// Stream context.
 #[non_exhaustive]

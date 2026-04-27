@@ -17,7 +17,8 @@ pub use endpoint::EndpointHandler;
 pub use endpoint::Request;
 pub use endpoint::RequestContext;
 pub use endpoint::Response;
-pub use stream::{StreamContext, StreamHandler};
+pub use stream::StreamContext;
+pub use stream::StreamHandler;
 
 use async_nats::ConnectOptions;
 use async_nats::HeaderMap;
