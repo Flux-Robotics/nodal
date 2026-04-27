@@ -68,7 +68,8 @@ impl WeatherService for WeatherImpl {
             .await? // publish to NATS
             .await?; // wait for ack from NATS
 
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            let interval = ctx.context().interval.lock().await.to_owned();
+            tokio::time::sleep(interval).await;
         }
     }
 
