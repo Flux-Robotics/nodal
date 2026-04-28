@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v6
       - name: Nightly
         run: rustup update nightly && rustup default nightly
+      - name: Add rustfmt
+        run: rustup component add rustfmt
       - name: Check formatting
         run: cargo +nightly fmt --all -- --check
 
