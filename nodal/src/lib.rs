@@ -29,6 +29,8 @@ use header::*;
 use schemars::Schema;
 use std::collections::HashMap;
 use std::fmt;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use tracing::Instrument;
@@ -169,14 +171,43 @@ pub struct Service<Context: ServiceContext> {
     pub context: Context,
 }
 
-/// Cluster definition.
-pub struct Cluster<Context: ServiceContext, A: ToServerAddrs> {
-    nats_addrs: A,
-    nats_options: ConnectOptions,
-    services: Vec<Service<Context>>,
+/// Type-erased service that can be run by the cluster, regardless of its context type.
+trait AnyService: Send + 'static {
+    fn name(&self) -> &str;
+    fn version(&self) -> &str;
+    fn run(
+        self: Box<Self>,
+        nats: async_nats::Client,
+        nats_service: async_nats::service::Service,
+    ) -> Pin<Box<dyn Future<Output = Result<(), async_nats::Error>> + Send + 'static>>;
 }
 
-impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
+impl<Context: ServiceContext> AnyService for Service<Context> {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn version(&self) -> &str {
+        &self.version
+    }
+
+    fn run(
+        self: Box<Self>,
+        nats: async_nats::Client,
+        nats_service: async_nats::service::Service,
+    ) -> Pin<Box<dyn Future<Output = Result<(), async_nats::Error>> + Send + 'static>> {
+        Box::pin(run_service(nats, *self, nats_service))
+    }
+}
+
+/// Cluster definition.
+pub struct Cluster<A: ToServerAddrs> {
+    nats_addrs: A,
+    nats_options: ConnectOptions,
+    services: Vec<Box<dyn AnyService>>,
+}
+
+impl<A: ToServerAddrs> Cluster<A> {
     pub fn new(addrs: A) -> std::io::Result<Self> {
         Ok(Self {
             nats_addrs: addrs,
@@ -194,8 +225,8 @@ impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
     }
 
     /// Register service instance.
-    pub fn register(&mut self, d: Service<Context>) {
-        self.services.push(d);
+    pub fn register<Context: ServiceContext>(&mut self, d: Service<Context>) {
+        self.services.push(Box::new(d));
     }
 
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -211,28 +242,26 @@ impl<Context: ServiceContext, A: ToServerAddrs> Cluster<Context, A> {
 
         for service in self.services {
             let nats = new_client().await?;
+            let name = service.name().to_owned();
+            let version = service.version().to_owned();
             let nats_service = nats
                 .service_builder()
                 .metadata(HashMap::from([(
                     VERSION.to_owned(),
                     env!("CARGO_PKG_VERSION").to_owned(),
                 )]))
-                .start(&service.name, &service.version)
+                .start(&name, &version)
                 .await
                 .map_err(|e| e.to_string())?;
-            let span = span!(
-                Level::INFO,
-                "service",
-                name = service.name,
-                version = service.version,
-            );
+            let span = span!(Level::INFO, "service", name = name, version = version);
 
-            join_set.spawn(async move {
-                run_service(nats, service, nats_service)
-                    .instrument(span)
-                    .await?;
-                Ok(())
-            });
+            join_set.spawn(
+                async move {
+                    service.run(nats, nats_service).await?;
+                    Ok(())
+                }
+                .instrument(span),
+            );
         }
 
         while let Some(res) = join_set.join_next().await {
