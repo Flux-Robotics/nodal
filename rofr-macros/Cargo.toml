@@ -1,5 +1,6 @@
 [package]
 name = "rofr-macros"
+authors = ["Liam Kinne <liam@umi.engineering>"]
 description = "Macros for RoFr"
 version = "0.1.0"
 edition = "2024"

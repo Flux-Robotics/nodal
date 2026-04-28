@@ -1,5 +1,6 @@
 [package]
 name = "rofr"
+authors = ["Liam Kinne <liam@umi.engineering>"]
 description = "Framework for building robotics APIs that use NATS messaging"
 version = "0.1.0"
 edition = "2024"
