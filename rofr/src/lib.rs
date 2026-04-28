@@ -1,4 +1,4 @@
-//! Nodal is a general-purpose framework for creating RPC-like APIs in Rust
+//! RoFr is a general-purpose framework for creating RPC-like APIs in Rust
 //! using NATS messaging. It also happens to be good for building robot
 //! software.
 //!
@@ -40,7 +40,7 @@ use tracing::error;
 use tracing::info;
 use tracing::span;
 
-extern crate nodal_macros;
+extern crate rofr_macros;
 
 /// Generates a service API description from a trait.
 ///
@@ -52,16 +52,16 @@ extern crate nodal_macros;
 ///
 /// # Headers
 ///
-/// - `Nodal-Version` Nodal library version.
+/// - `RoFr-Version` RoFr library version.
 ///
 /// # Example
 ///
 /// ```rust
-/// use nodal::Error;
-/// use nodal::Request;
-/// use nodal::RequestContext;
-/// use nodal::Response;
-/// use nodal::service;
+/// use rofr::Error;
+/// use rofr::Request;
+/// use rofr::RequestContext;
+/// use rofr::Response;
+/// use rofr::service;
 ///
 /// #[service(name = "actuator", version = "0.1.2")]
 /// trait ActuatorService {
@@ -74,13 +74,13 @@ extern crate nodal_macros;
 ///     ) -> Result<Response<()>, Error>;
 /// }
 /// ```
-pub use nodal_macros::service;
+pub use rofr_macros::service;
 
 /// Transforms a handler function into a NATS service endpoint.
 ///
 /// # Request Headers
 ///
-/// - `Nodal-Request-Id` (optional) a unique identifier that the client generates to help trace requests.
+/// - `RoFr-Request-Id` (optional) a unique identifier that the client generates to help trace requests.
 ///
 /// ```ignore
 /// #[endpoint(subject = "example")]
@@ -89,7 +89,7 @@ pub use nodal_macros::service;
 ///     /* ... */,
 /// ) -> Result<Response</* ... */, Error>;
 /// ```
-pub use nodal_macros::endpoint;
+pub use rofr_macros::endpoint;
 
 /// Transforms a stream handler function into a NATS JetStream publisher.
 ///
@@ -101,7 +101,7 @@ pub use nodal_macros::endpoint;
 /// )]
 /// async fn example(ctx: StreamContext<Self::Context>) -> Result<(), Error>;
 /// ```
-pub use nodal_macros::stream;
+pub use rofr_macros::stream;
 
 /// Marker trait for service context types.
 pub trait ServiceContext: Send + Sync + 'static {}
@@ -345,7 +345,7 @@ async fn run_service<Context: ServiceContext>(
                         .instrument(span)
                         .await;
                     #[cfg(feature = "metrics")]
-                    metrics::histogram!("nodal_request_handler_duration_seconds", &metric_labels)
+                    metrics::histogram!("rofr_request_handler_duration_seconds", &metric_labels)
                         .record(start_handler.elapsed().as_secs_f64());
 
                     // response headers
@@ -364,7 +364,7 @@ async fn run_service<Context: ServiceContext>(
                             let message = format!("{}", err);
                             error!(message, "request failed");
                             #[cfg(feature = "metrics")]
-                            metrics::counter!("nodal_request_handler_errors", &metric_labels)
+                            metrics::counter!("rofr_request_handler_errors", &metric_labels)
                                 .increment(1);
                             Err(async_nats::service::error::Error {
                                 status: message,
@@ -376,7 +376,7 @@ async fn run_service<Context: ServiceContext>(
                     req.respond_with_headers(response, headers).await?;
 
                     #[cfg(feature = "metrics")]
-                    metrics::histogram!("nodal_request_duration_seconds", &metric_labels)
+                    metrics::histogram!("rofr_request_duration_seconds", &metric_labels)
                         .record(start.elapsed().as_secs_f64());
                 }
                 info!("handler ended");

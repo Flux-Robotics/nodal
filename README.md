@@ -1,8 +1,8 @@
 🚧 Work in progress! 🚧
 
-# Nodal
+# RoFr
 
-Nodal is a general-purpose framework for creating RPC-like APIs in Rust using
+RoFr is a general-purpose framework for creating RPC-like APIs in Rust using
 NATS messaging. It also happens to be good for building robot software.
 
 A key feature is the separation of the API from the implementation, allowing multiple implementations for a single API.

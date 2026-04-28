@@ -10,7 +10,7 @@ state: published
 
 RFDs are a tool for thinking. By writing down the intent behind a design
 decision, it allows them to be more rigorously evalutated. For the kind of
-applications we expect Nodal to be useful for, rigor is a core value.
+applications we expect RoFr to be useful for, rigor is a core value.
 
 This is by no means a new idea. Some examples of prior art:
 

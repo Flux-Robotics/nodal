@@ -48,7 +48,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
     let where_clause = trait_item.generics.make_where_clause();
     where_clause
         .predicates
-        .push(syn::parse_quote!(Self::Context: ::nodal::ServiceContext));
+        .push(syn::parse_quote!(Self::Context: ::rofr::ServiceContext));
 
     let mut endpoint_methods = Vec::new();
     let mut stream_methods = Vec::new();
@@ -211,24 +211,24 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
         // handler implementation - with proper trait bounds
         let handler_impl = if *has_body_param {
             quote! {
-                #[::nodal::async_trait::async_trait]
-                impl<T> ::nodal::EndpointHandler<T::Context> for #handler_name<T>
+                #[::rofr::async_trait::async_trait]
+                impl<T> ::rofr::EndpointHandler<T::Context> for #handler_name<T>
                 where
                     T: #trait_name + Send + Sync + 'static,
-                    T::Context: ::nodal::ServiceContext,
+                    T::Context: ::rofr::ServiceContext,
                 {
                     async fn handle_request(
                         &self,
-                        rqctx: ::nodal::RequestContext<T::Context>,
-                        body: ::nodal::Bytes,
-                    ) -> Result<::nodal::Bytes, Box<dyn std::error::Error + Send + Sync>> {
-                        let request: ::nodal::Request<_> = ::serde_json::from_slice(&body)?;
+                        rqctx: ::rofr::RequestContext<T::Context>,
+                        body: ::rofr::Bytes,
+                    ) -> Result<::rofr::Bytes, Box<dyn std::error::Error + Send + Sync>> {
+                        let request: ::rofr::Request<_> = ::serde_json::from_slice(&body)?;
                         let result = T::#method_name(rqctx, request).await;
 
                         match result {
                             Ok(response) => {
                                 let json = ::serde_json::to_vec(&response)?;
-                                Ok(::nodal::Bytes::from(json))
+                                Ok(::rofr::Bytes::from(json))
                             }
                             Err(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
                         }
@@ -237,23 +237,23 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         } else {
             quote! {
-                #[::nodal::async_trait::async_trait]
-                impl<T> ::nodal::EndpointHandler<T::Context> for #handler_name<T>
+                #[::rofr::async_trait::async_trait]
+                impl<T> ::rofr::EndpointHandler<T::Context> for #handler_name<T>
                 where
                     T: #trait_name + Send + Sync + 'static,
-                    T::Context: ::nodal::ServiceContext,
+                    T::Context: ::rofr::ServiceContext,
                 {
                     async fn handle_request(
                         &self,
-                        rqctx: ::nodal::RequestContext<T::Context>,
-                        _body: ::nodal::Bytes,
-                    ) -> Result<::nodal::Bytes, Box<dyn std::error::Error + Send + Sync>> {
+                        rqctx: ::rofr::RequestContext<T::Context>,
+                        _body: ::rofr::Bytes,
+                    ) -> Result<::rofr::Bytes, Box<dyn std::error::Error + Send + Sync>> {
                         let result = T::#method_name(rqctx).await;
 
                         match result {
                             Ok(response) => {
                                 let json = ::serde_json::to_vec(&response)?;
-                                Ok(::nodal::Bytes::from(json))
+                                Ok(::rofr::Bytes::from(json))
                             }
                             Err(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
                         }
@@ -268,7 +268,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
         let subject_expr = build_subject_expr(subject, &service_template_params);
 
         endpoint_registrations.push(quote! {
-            endpoints.push(::nodal::Endpoint {
+            endpoints.push(::rofr::Endpoint {
                 subject: #subject_expr,
                 handler: ::std::sync::Arc::new(#handler_name::<Self>(::std::marker::PhantomData)),
                 request_schema: ::schemars::schema_for!(#request_type),
@@ -286,11 +286,11 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let service_fn_signature = if service_template_params.is_empty() {
         quote! {
-            fn service(context: Self::Context) -> ::nodal::Service<Self::Context>
+            fn service(context: Self::Context) -> ::rofr::Service<Self::Context>
         }
     } else {
         quote! {
-            fn service(context: Self::Context, params: (#(#param_types,)*)) -> ::nodal::Service<Self::Context>
+            fn service(context: Self::Context, params: (#(#param_types,)*)) -> ::rofr::Service<Self::Context>
         }
     };
 
@@ -323,15 +323,15 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
         });
 
         stream_handler_impls.push(quote! {
-            #[::nodal::async_trait::async_trait]
-            impl<T> ::nodal::StreamHandler<T::Context> for #handler_name<T>
+            #[::rofr::async_trait::async_trait]
+            impl<T> ::rofr::StreamHandler<T::Context> for #handler_name<T>
             where
                 T: #trait_name + Send + Sync + 'static,
-                T::Context: ::nodal::ServiceContext,
+                T::Context: ::rofr::ServiceContext,
             {
                 async fn handle_stream(
                     &self,
-                    ctx: ::nodal::StreamContext<T::Context>,
+                    ctx: ::rofr::StreamContext<T::Context>,
                 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     T::#method_name(ctx).await?;
                     Ok(())
@@ -363,7 +363,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
         let subject_prefix_expr = build_subject_prefix_expr(&service_template_params);
 
         stream_registrations.push(quote! {
-            streams.push(::nodal::Stream {
+            streams.push(::rofr::Stream {
                 subject_prefix: format!("{}.{}", #service_name, #subject_prefix_expr),
                 config: ::async_nats::jetstream::stream::Config {
                     name: format!("{}_{}", #service_name.to_string().to_uppercase(), #stream_name.to_string()),
@@ -408,7 +408,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
             let header_block = quote! {
                 let request_id = ::ulid::Ulid::new().to_string();
                 let mut headers = ::async_nats::HeaderMap::new();
-                headers.insert(::nodal::header::REQUEST_ID, request_id.as_str());
+                headers.insert(::rofr::header::REQUEST_ID, request_id.as_str());
                 let subject = #subject_expr;
             };
             let status_check = quote! {
@@ -416,34 +416,34 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                     if status.as_u16() != 200 {
                         let err = msg.description
                             .unwrap_or_else(|| String::from_utf8_lossy(&msg.payload).to_string());
-                        return Err(::nodal::ClientError::ServiceError(err));
+                        return Err(::rofr::ClientError::ServiceError(err));
                     }
                 }
                 let result: #response_type = ::serde_json::from_slice(&msg.payload)
-                    .map_err(::nodal::ClientError::Deserialize)?;
+                    .map_err(::rofr::ClientError::Deserialize)?;
                 Ok(result)
             };
             if *has_body_param {
                 quote! {
-                    pub async fn #method_name(&self, body: #request_type) -> Result<#response_type, ::nodal::ClientError> {
+                    pub async fn #method_name(&self, body: #request_type) -> Result<#response_type, ::rofr::ClientError> {
                         #header_block
                         let payload = ::serde_json::to_vec(&body)
-                            .map_err(::nodal::ClientError::Serialize)?;
+                            .map_err(::rofr::ClientError::Serialize)?;
                         let msg = self.nats
-                            .request_with_headers(subject, headers, ::nodal::Bytes::from(payload))
+                            .request_with_headers(subject, headers, ::rofr::Bytes::from(payload))
                             .await
-                            .map_err(|e| ::nodal::ClientError::Request(Box::new(e)))?;
+                            .map_err(|e| ::rofr::ClientError::Request(Box::new(e)))?;
                         #status_check
                     }
                 }
             } else {
                 quote! {
-                    pub async fn #method_name(&self) -> Result<#response_type, ::nodal::ClientError> {
+                    pub async fn #method_name(&self) -> Result<#response_type, ::rofr::ClientError> {
                         #header_block
                         let msg = self.nats
-                            .request_with_headers(subject, headers, ::nodal::Bytes::new())
+                            .request_with_headers(subject, headers, ::rofr::Bytes::new())
                             .await
-                            .map_err(|e| ::nodal::ClientError::Request(Box::new(e)))?;
+                            .map_err(|e| ::rofr::ClientError::Request(Box::new(e)))?;
                         #status_check
                     }
                 }
@@ -476,7 +476,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
         pub trait #ext_trait_name: #trait_name + Sized
         where
             Self: Send + Sync + 'static,
-            Self::Context: ::nodal::ServiceContext,
+            Self::Context: ::rofr::ServiceContext,
         {
             #service_fn_signature;
         }
@@ -485,7 +485,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
         impl<T> #ext_trait_name for T
         where
             T: #trait_name + Send + Sync + 'static,
-            T::Context: ::nodal::ServiceContext,
+            T::Context: ::rofr::ServiceContext,
         {
             #service_fn_signature {
                 #service_fn_body_prelude
@@ -496,7 +496,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 #(#stream_registrations)*
 
-                ::nodal::Service {
+                ::rofr::Service {
                     name: #service_name.to_string(),
                     version: #service_version.to_string(),
                     endpoints,
