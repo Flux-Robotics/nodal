@@ -4,7 +4,7 @@
 
 - Remove the need for `serde_json` as a dependency in implementations.
 - Remove the need for `ulid` as a dependency in implementations.
-- `schemars` and schema headers removed.
+- Remove `schemars` and schema headers.
 
 ## v0.1.0
 
