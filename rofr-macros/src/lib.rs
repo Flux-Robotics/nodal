@@ -403,15 +403,16 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                         return Err(::rofr::ClientError::ServiceError(err));
                     }
                 }
-                let result: #response_type = ::serde_json::from_slice(&msg.payload)
+                let result = ::rofr::Response::<#response_type>::from_bytes(&msg.payload)
                     .map_err(::rofr::ClientError::Deserialize)?;
-                Ok(result)
+                Ok(result.0)
             };
             if *has_body_param {
                 quote! {
                     pub async fn #method_name(&self, body: #request_type) -> Result<#response_type, ::rofr::ClientError> {
                         #header_block
-                        let payload = ::serde_json::to_vec(&body)
+                        let payload = ::rofr::Request { inner: body }
+                            .into_bytes()
                             .map_err(::rofr::ClientError::Serialize)?;
                         let msg = self.nats
                             .request_with_headers(subject, headers, ::rofr::Bytes::from(payload))
