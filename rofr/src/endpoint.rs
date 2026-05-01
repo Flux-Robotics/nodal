@@ -15,6 +15,16 @@ pub struct Request<T: JsonSchema> {
     inner: T,
 }
 
+impl<T: JsonSchema + serde::de::DeserializeOwned> Request<T> {
+    /// Deserialize a [`Request`] from raw bytes.
+    ///
+    /// This is the counterpart to [`Response::into_bytes`] and can be used to
+    /// manually implement [`EndpointHandler`] without the [`service`] macro.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        serde_json::from_slice(bytes)
+    }
+}
+
 impl<T: JsonSchema> Request<T> {
     pub fn into_inner(self) -> T {
         self.inner
@@ -32,6 +42,16 @@ impl<T: JsonSchema> std::ops::Deref for Request<T> {
 /// Successful response wrapper
 #[derive(Debug, Serialize)]
 pub struct Response<T>(pub T);
+
+impl<T: Serialize> Response<T> {
+    /// Serialize the response into raw bytes.
+    ///
+    /// This is the counterpart to [`Request::from_bytes`] and can be used to
+    /// manually implement [`EndpointHandler`] without the [`service`] macro.
+    pub fn into_bytes(self) -> Result<Bytes, serde_json::Error> {
+        serde_json::to_vec(&self).map(Bytes::from)
+    }
+}
 
 /// Request context.
 #[non_exhaustive]

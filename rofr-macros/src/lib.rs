@@ -222,16 +222,8 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                         rqctx: ::rofr::RequestContext<T::Context>,
                         body: ::rofr::Bytes,
                     ) -> Result<::rofr::Bytes, Box<dyn std::error::Error + Send + Sync>> {
-                        let request: ::rofr::Request<_> = ::serde_json::from_slice(&body)?;
-                        let result = T::#method_name(rqctx, request).await;
-
-                        match result {
-                            Ok(response) => {
-                                let json = ::serde_json::to_vec(&response)?;
-                                Ok(::rofr::Bytes::from(json))
-                            }
-                            Err(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
-                        }
+                        let request = ::rofr::Request::from_bytes(&body)?;
+                        Ok(T::#method_name(rqctx, request).await?.into_bytes()?)
                     }
                 }
             }
@@ -248,15 +240,7 @@ pub fn service(args: TokenStream, input: TokenStream) -> TokenStream {
                         rqctx: ::rofr::RequestContext<T::Context>,
                         _body: ::rofr::Bytes,
                     ) -> Result<::rofr::Bytes, Box<dyn std::error::Error + Send + Sync>> {
-                        let result = T::#method_name(rqctx).await;
-
-                        match result {
-                            Ok(response) => {
-                                let json = ::serde_json::to_vec(&response)?;
-                                Ok(::rofr::Bytes::from(json))
-                            }
-                            Err(e) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
-                        }
+                        Ok(T::#method_name(rqctx).await?.into_bytes()?)
                     }
                 }
             }
