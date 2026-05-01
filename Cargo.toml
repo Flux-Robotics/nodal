@@ -3,5 +3,7 @@ resolver = "2"
 members = [
     "rofr",
     "rofr-macros",
-    "examples/weather-station"
+]
+exclude = [
+    "examples/weather-station",
 ]
